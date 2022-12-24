@@ -1,7 +1,7 @@
 CC := clang
 
 ifeq ($(DEBUG),1)
-	CFLAGS := -Wall -O0 -g
+	CFLAGS := -Wall -O0 -g -DDEBUG
 else
 	CFLAGS := -Wall -O1 -DNDEBUG 
 endif
@@ -25,5 +25,12 @@ sum.o: sum.c
 sum: sum.o
 	$(CC) -o sum sum.o $(LDFLAGS)
 
+
+sum2.o: sum.c 
+	$(CC) $(CFLAGS) -c sum2.c 
+
+sum2: sum2.o
+	$(CC) -o sum2 sum2.o $(LDFLAGS)
+
 clean:
-	rm -f isort sum *.o *.gcda *.gcno *.gcov perf.data */perf.data cachegrind.out.*
+	rm -f isort sum sum2 *.o *.gcda *.gcno *.gcov perf.data */perf.data cachegrind.out.*
