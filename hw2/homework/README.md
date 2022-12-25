@@ -1,4 +1,4 @@
-# Homework week 2
+# Homework week 2 solutions
 
 ## Sorting
 
