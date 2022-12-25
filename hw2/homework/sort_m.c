@@ -21,9 +21,76 @@
  **/
 
 
+
 #include "./util.h"
+#include "./isort.h"
+
+// Function prototypes
+void sort_m(data_t* A, int p, int r);
+static inline void __sort_m(data_t* A, int p, int r);
+static void merge_m(data_t* A, int p, int q, int r);
+static inline void copy_m(data_t* source, data_t* dest, int n);
 
 void sort_m(data_t* A, int p, int r) {
-  printf("Unimplemented!\n");
+  __sort_m(A, p, r);
 }
 
+
+// A basic merge sort routine that sorts the subarray A[p..rq]
+static inline void __sort_m(data_t* A, int p, int r) {
+  assert(A);
+  if (p < r) {
+    if (r - p > 30) {
+      int q = (p + r) / 2;
+      __sort_m(A, p, q);
+      __sort_m(A, q + 1, r);
+      merge_m(A, p, q, r);
+    } else {
+      isort(A+p, A+r);
+    }
+  }
+}
+
+// A merge routine. Merges the sub-arrays A [p..q] and A [q + 1..r].
+// Uses two arrays 'left' and 'right' in the merge operation.
+static void merge_m(data_t* A, int p, int q, int r) {
+  assert(A);
+  assert(p <= q);
+  assert((q + 1) <= r);
+  int n1 = q - p + 1;
+  int n2 = r - q;
+
+  data_t* left = 0;
+  data_t* right = A + (q+1);
+  mem_alloc(&left, n1 + 1);
+  if (left == NULL) {
+    mem_free(&left);
+    return;
+  }
+
+  copy_m(A+p, left, n1);
+  *(left+n1) = UINT_MAX;
+
+  int i = 0;
+  int j = 0;
+
+  for (int k = p; k <= r; k++) {
+    if (j >= n2 || *(left+i) <= *(right+j)) {
+      *(A+k) = *(left+i);
+      i++;
+    } else {
+      *(A+k) = *(right+j);
+      j++;
+    }
+  }
+  mem_free(&left);
+}
+
+static inline void copy_m(data_t* source, data_t* dest, int n) {
+  assert(dest);
+  assert(source);
+
+  for (int i = 0 ; i < n ; i++) {
+    *(dest+i) = *(source+i);
+  }
+}
