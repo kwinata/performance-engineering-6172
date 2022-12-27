@@ -29,6 +29,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <sys/types.h>
@@ -64,6 +65,11 @@ static void bitarray_rotate_left(bitarray_t* const bitarray,
                                  const size_t bit_offset,
                                  const size_t bit_length,
                                  const size_t bit_left_amount);
+static void bitarray_rotate_left_c(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount);
+
 
 // Rotates a subarray left by one bit.
 //
@@ -193,7 +199,7 @@ void bitarray_rotate(bitarray_t* const bitarray,
 
   // Convert a rotate left or right to a left rotate only, and eliminate
   // multiple full rotations.
-  bitarray_rotate_left(bitarray, bit_offset, bit_length,
+  bitarray_rotate_left_c(bitarray, bit_offset, bit_length,
                        modulo(-bit_right_amount, bit_length));
 }
 
@@ -203,6 +209,22 @@ static void bitarray_rotate_left(bitarray_t* const bitarray,
                                  const size_t bit_left_amount) {
   for (size_t i = 0; i < bit_left_amount; i++) {
     bitarray_rotate_left_one(bitarray, bit_offset, bit_length);
+  }
+}
+
+static void bitarray_rotate_left_c(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount) {
+  bitarray_t* buffer = bitarray_new(bit_left_amount);
+  for (size_t i = 0; i < bit_left_amount; i++) {
+    bitarray_set(buffer, i, bitarray_get(bitarray, bit_offset+i));
+  }
+  for (size_t i = bit_left_amount; i < bit_length; i++) {
+    bitarray_set(bitarray, bit_offset+i-bit_left_amount, bitarray_get(bitarray, bit_offset+i));
+  }
+  for (size_t i = bit_length - bit_left_amount; i < bit_length; i++) {
+    bitarray_set(bitarray, bit_offset+i, bitarray_get(buffer, i-(bit_length - bit_left_amount)));
   }
 }
 
