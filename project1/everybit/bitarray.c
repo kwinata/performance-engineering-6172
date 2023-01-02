@@ -69,6 +69,10 @@ static void bitarray_rotate_left_c(bitarray_t* const bitarray,
                                  const size_t bit_offset,
                                  const size_t bit_length,
                                  const size_t bit_left_amount);
+static void bitarray_rotate_left_r(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount);
 
 
 // Rotates a subarray left by one bit.
@@ -199,10 +203,11 @@ void bitarray_rotate(bitarray_t* const bitarray,
 
   // Convert a rotate left or right to a left rotate only, and eliminate
   // multiple full rotations.
-  bitarray_rotate_left_c(bitarray, bit_offset, bit_length,
+  bitarray_rotate_left_r(bitarray, bit_offset, bit_length,
                        modulo(-bit_right_amount, bit_length));
 }
 
+// original implementation
 static void bitarray_rotate_left(bitarray_t* const bitarray,
                                  const size_t bit_offset,
                                  const size_t bit_length,
@@ -212,6 +217,7 @@ static void bitarray_rotate_left(bitarray_t* const bitarray,
   }
 }
 
+// c for copy
 static void bitarray_rotate_left_c(bitarray_t* const bitarray,
                                  const size_t bit_offset,
                                  const size_t bit_length,
@@ -225,6 +231,44 @@ static void bitarray_rotate_left_c(bitarray_t* const bitarray,
   }
   for (size_t i = bit_length - bit_left_amount; i < bit_length; i++) {
     bitarray_set(bitarray, bit_offset+i, bitarray_get(buffer, i-(bit_length - bit_left_amount)));
+  }
+}
+
+// r for reversal
+static void bitarray_rotate_left_r(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount) {
+  // this is necessary to prevent overflow (-1 -> 18446744073709551615) when
+  //  when calculating lt
+  if (bit_left_amount <= 0) {
+    return; 
+  }
+
+  bool tmp;
+  size_t lh = bit_offset; // left head
+  size_t lt = bit_offset+bit_left_amount-1; // left tail
+  size_t rh = bit_offset+bit_left_amount; // right head
+  size_t rt = bit_offset+bit_length-1; // right tail
+  for (int i = 0; i < (bit_left_amount >> 1); i ++) {
+    tmp = bitarray_get(bitarray, lt);
+    bitarray_set(bitarray, lt, bitarray_get(bitarray, lh));
+    bitarray_set(bitarray, lh, tmp);
+    lh++; lt--;
+  }
+  for (int i = 0; i < ((bit_length - bit_left_amount) >> 1); i ++) {
+    tmp = bitarray_get(bitarray, rt);
+    bitarray_set(bitarray, rt, bitarray_get(bitarray, rh));
+    bitarray_set(bitarray, rh, tmp);
+    rh++; rt--;
+  }
+  size_t h = bit_offset;
+  size_t t = bit_offset+bit_length-1;
+  for (int i = 0; i < (bit_length >> 1); i ++) {
+    tmp = bitarray_get(bitarray, t);
+    bitarray_set(bitarray, t, bitarray_get(bitarray, h));
+    bitarray_set(bitarray, h, tmp);
+    h++; t--;
   }
 }
 
