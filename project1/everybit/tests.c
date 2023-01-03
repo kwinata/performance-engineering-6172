@@ -67,7 +67,7 @@ void testutil_require_valid_input(const size_t bit_offset,
 static void testutil_newrand(const size_t bit_sz, const unsigned int seed);
 
 // Prints a string representation of a bit array.
-static void bitarray_fprint(FILE* const stream,
+void bitarray_fprint(FILE* const stream,
                             const bitarray_t* const bitarray);
 
 // Verifies that test_bitarray has the expected content.
@@ -185,7 +185,7 @@ void testutil_frmstr(const char* const bitstring) {
   }
 }
 
-static void bitarray_fprint(FILE* const stream,
+void bitarray_fprint(FILE* const stream,
                             const bitarray_t* const bitarray) {
   for (size_t i = 0; i < bitarray_get_bit_sz(bitarray); i++) {
     fprintf(stream, "%d", bitarray_get(bitarray, i) ? 1 : 0);

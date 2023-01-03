@@ -157,8 +157,5 @@ struct bitarray {
 };
 ```
 
-What if we can have a different version that operates on the bit_array rather than the bit? Specifically, we can use this for `bitarray_rotate_left_c`.
+What if we can have a different version that operates on the bitarray_t rather than the bit? Specifically, we can use this for `bitarray_rotate_left_c`.
 
-``` c
-bitarray_t* bitarray_get_batched(const bit_array* const bitarray, const size_t bit_index, const size_t bit_count);
-```

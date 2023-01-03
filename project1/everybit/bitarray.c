@@ -167,13 +167,12 @@ bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index) {
          true : false;
 }
 
-
-bitarray_t* bitarray_get_batched(const bitarray_t* const bitarray, const size_t bit_index, const size_t bit_count) {
-  assert(bit_index+bit_count < bitarray->bit_sz);
-  bitarray_t* copied = bitarray_new(bit_count);
+void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_index, const size_t bit_count, const bitarray_t* destination, const size_t destination_index) {
+  assert(bit_index + bit_count <= bitarray->bit_sz);
+  assert(destination_index + bit_count <= destination->bit_sz );
   
   size_t loc = bit_index;
-  size_t rloc = 0;
+  size_t rloc = destination_index;
   while(true) {
     #ifndef NDEBUG
     printf("\n===============");
@@ -218,10 +217,10 @@ bitarray_t* bitarray_get_batched(const bitarray_t* const bitarray, const size_t 
     char new_value = v & bitmask_until(towrite_count);
 
     #ifndef NDEBUG
-    printf("toshift_amount %lu, new_value 0x%x, prev value 0x%x\n", toshift_amount, new_value & 0xff, copied->buf[rloc/8] & 0xff);
+    printf("toshift_amount %lu, new_value 0x%x, prev value 0x%x\n", toshift_amount, new_value & 0xff, destination->buf[rloc/8] & 0xff);
     #endif
 
-    copied->buf[rloc/8] = copied->buf[rloc/8] ^ (new_value << toshift_amount);
+    destination->buf[rloc/8] = destination->buf[rloc/8] ^ (new_value << toshift_amount);
     rloc += towrite_count;
     loc += towrite_count;
     if (rloc >= bit_count) {
@@ -234,7 +233,7 @@ bitarray_t* bitarray_get_batched(const bitarray_t* const bitarray, const size_t 
       break;
     }
   }
-  return copied;
+  return;
 }
 
 void bitarray_set(bitarray_t* const bitarray,
