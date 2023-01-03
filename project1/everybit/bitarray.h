@@ -51,6 +51,9 @@ void bitarray_randfill(bitarray_t* const bitarray);
 // index.
 bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index);
 
+// custom implementation that get bitarray range and return new bitarray
+bitarray_t* bitarray_get_batched(const bitarray_t* const bitarray, const size_t bit_index, const size_t bit_count);
+
 // Indexes into a bit array, setting the bit at the specified zero-based index.
 void bitarray_set(bitarray_t* const bitarray,
                   const size_t bit_index,

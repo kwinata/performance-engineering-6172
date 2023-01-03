@@ -36,12 +36,15 @@
 // ******************************* Prototypes *******************************
 
 void print_usage(const char* const argv_0);
-
+void test_bitarray_get_batched();
 
 // ******************************* Functions ********************************
 
 int main(int argc, char** argv) {
   int retval = EXIT_SUCCESS;
+
+  // pretests
+  test_bitarray_get_batched();
 
   // Parse options.
   char optchar;
@@ -102,4 +105,29 @@ void print_usage(const char* const argv_0) {
           "\t -t tests/default\tRun alltests in the testfile tests/default\n"
           "\t -n 1 -t tests/default\tRun test 1 in the testfile tests/default\n",
           argv_0);
+}
+
+static void helper_fprint(FILE* const stream,
+                            const bitarray_t* const bitarray) {
+  for (size_t i = 0; i < bitarray_get_bit_sz(bitarray); i++) {
+    fprintf(stream, "%d", bitarray_get(bitarray, i) ? 1 : 0);
+  }
+}
+
+void test_bitarray_get_batched() {
+  bitarray_t* b = bitarray_new(10);
+  for (size_t i = 0; i < 10; i ++) {
+    bitarray_set(b, i, (0b1100011100 & (1 << i)) > 0);
+  }
+  printf("Input bitarray: ");
+  helper_fprint(stdout, b);
+  printf("\n");
+
+  bitarray_t* copied = bitarray_get_batched(b, 3, 6);
+  printf("gotten bitarray: ");
+  helper_fprint(stdout, copied);
+  printf("\n");
+  
+  bitarray_free(b);
+  bitarray_free(copied);
 }

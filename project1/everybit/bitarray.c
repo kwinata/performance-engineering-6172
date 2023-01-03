@@ -116,7 +116,7 @@ static size_t modulo(const ssize_t n, const size_t m);
 // to access bits in your bitarray, this reverse representation should
 // not matter.
 static char bitmask(const size_t bit_index);
-
+static char bitmask_until(const int count);
 
 // ******************************* Functions ********************************
 
@@ -165,6 +165,76 @@ bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index) {
   // (if it wasn't).  Finally, we convert that to a boolean.
   return (bitarray->buf[bit_index / 8] & bitmask(bit_index)) ?
          true : false;
+}
+
+
+bitarray_t* bitarray_get_batched(const bitarray_t* const bitarray, const size_t bit_index, const size_t bit_count) {
+  assert(bit_index+bit_count < bitarray->bit_sz);
+  bitarray_t* copied = bitarray_new(bit_count);
+  
+  size_t loc = bit_index;
+  size_t rloc = 0;
+  while(true) {
+    #ifndef NDEBUG
+    printf("\n===============");
+    printf("loc %lu, rloc %lu\n", loc, rloc);
+    #endif
+
+    // bitmask of (loc % 8 == 6) is -> 1100_0000 (111_1111 ^ 0011_1111)
+    char bitmask = (bitmask_until(8) ^ bitmask_until(loc % 8));
+
+    #ifndef NDEBUG
+    printf("bitmask: %x\n", bitmask & 0xff);
+    #endif
+
+
+    // we will bit shift by (loc % 8) to push the bits infront
+    char v = (bitarray->buf[loc/8] & bitmask) >> (loc % 8);
+
+    #ifndef NDEBUG
+    printf("byte: 0x%x, v: 0x%x\n", bitarray->buf[loc/8] & 0xff, v & 0xff);
+    #endif
+    
+    // rloc will point to the location on which we will put the new values
+    // e.g. if we have bit_count 5, and rloc 3: means:
+    // x x x _ _ 
+    //       ^rloc
+    size_t remaining_writeable = bit_count-rloc;
+
+    // (-loc % 8 + 8), e.g. if loc = 6. we will get 2. This corresponds to
+    // knowing that we only have the last 2 bits of current byte
+    // _ _ _ _ _ _ x x
+    // 0 1 2 3 4 5 6 7
+    //             ^loc
+    size_t current_byte_gotten = (8 - (loc % 8));
+
+    #ifndef NDEBUG
+    printf("remaining_writeable %lu, current_byte_gotten %lu\n", remaining_writeable & 0xff, current_byte_gotten & 0xff);
+    #endif
+
+    // get min(remaining_writeable, current_byte_gotten)
+    size_t towrite_count = remaining_writeable > current_byte_gotten ? current_byte_gotten : remaining_writeable;
+    size_t toshift_amount = rloc % 8;
+    char new_value = v & bitmask_until(towrite_count);
+
+    #ifndef NDEBUG
+    printf("toshift_amount %lu, new_value 0x%x, prev value 0x%x\n", toshift_amount, new_value & 0xff, copied->buf[rloc/8] & 0xff);
+    #endif
+
+    copied->buf[rloc/8] = copied->buf[rloc/8] ^ (new_value << toshift_amount);
+    rloc += towrite_count;
+    loc += towrite_count;
+    if (rloc >= bit_count) {
+      #ifndef NDEBUG
+      printf("exit batched\n");
+      printf("\n===== EXIT ==========\n\n");
+
+      #endif
+
+      break;
+    }
+  }
+  return copied;
 }
 
 void bitarray_set(bitarray_t* const bitarray,
@@ -297,3 +367,6 @@ static char bitmask(const size_t bit_index) {
   return 1 << (bit_index % 8);
 }
 
+static char bitmask_until(const int count) {
+  return (1 << (count)) - 1;
+}

@@ -14,6 +14,7 @@ version | l tier | description
 
 - [x] use copy
 - [x] r(r(a)r(b)) = ba 
+- [ ] batched / byte operation
 - [ ] perform cache analysis
 - [ ] profiling?
 
@@ -133,3 +134,31 @@ However we can still improve by avoiding the checks in the while loop by pre-cal
 ```
 
 This turns out doens't improve that much. The while loop version on tier 38 runs 0.819516s meanwhile the for loop version runs 0.809408s. Which could be attributed to random variation.
+
+### Feature 3: batched / byte operation.
+
+So currently `bitarray_get` is getting the byte then using bitmask to get the bit:
+
+``` c
+bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index) {
+  assert(bit_index < bitarray->bit_sz);
+  return (bitarray->buf[bit_index / 8] & bitmask(bit_index)) ?
+         true : false;
+}
+```
+
+Here `buf` is type `char *`:
+
+``` c
+// Concrete data type representing an array of bits.
+struct bitarray {
+  size_t bit_sz;
+  char* buf;
+};
+```
+
+What if we can have a different version that operates on the bit_array rather than the bit? Specifically, we can use this for `bitarray_rotate_left_c`.
+
+``` c
+bitarray_t* bitarray_get_batched(const bit_array* const bitarray, const size_t bit_index, const size_t bit_count);
+```
