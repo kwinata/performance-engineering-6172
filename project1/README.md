@@ -8,13 +8,14 @@ version | l tier | description
 1       | 38     | use copy
 2.0     | 38     | use swap + reversal (use while loop)
 2.1     | 38     | use swap + reversal (use for loop)
+3       | 40     | use batched copy
 
 
 ## Todolist
 
 - [x] use copy
 - [x] r(r(a)r(b)) = ba 
-- [ ] batched / byte operation
+- [x] batched / byte operation
 - [ ] perform cache analysis
 - [ ] profiling?
 
@@ -157,5 +158,8 @@ struct bitarray {
 };
 ```
 
-What if we can have a different version that operates on the bitarray_t rather than the bit? Specifically, we can use this for `bitarray_rotate_left_c`.
+What if we can have a different version that operates on the bitarray_t rather than the bit? 
+Specifically, we can apply this for the copy strategy.
+
+After implementing. We found out that the improvement that we get is about 2x improvement. Allowing us to increase to tier 40 rather than 38.
 

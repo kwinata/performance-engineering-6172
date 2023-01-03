@@ -73,7 +73,10 @@ static void bitarray_rotate_left_r(bitarray_t* const bitarray,
                                  const size_t bit_offset,
                                  const size_t bit_length,
                                  const size_t bit_left_amount);
-
+static void bitarray_rotate_left_cb(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount);
 
 // Rotates a subarray left by one bit.
 //
@@ -167,38 +170,29 @@ bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index) {
          true : false;
 }
 
+static size_t min_size_t(const size_t a, const size_t b) {
+  return a > b ? b : a;
+}
+
 void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_index, const size_t bit_count, const bitarray_t* destination, const size_t destination_index) {
   assert(bit_index + bit_count <= bitarray->bit_sz);
   assert(destination_index + bit_count <= destination->bit_sz );
   
   size_t loc = bit_index;
-  size_t rloc = destination_index;
+  size_t dloc = destination_index;
   while(true) {
-    #ifndef NDEBUG
-    printf("\n===============");
-    printf("loc %lu, rloc %lu\n", loc, rloc);
-    #endif
 
     // bitmask of (loc % 8 == 6) is -> 1100_0000 (111_1111 ^ 0011_1111)
     char bitmask = (bitmask_until(8) ^ bitmask_until(loc % 8));
 
-    #ifndef NDEBUG
-    printf("bitmask: %x\n", bitmask & 0xff);
-    #endif
-
-
     // we will bit shift by (loc % 8) to push the bits infront
     char v = (bitarray->buf[loc/8] & bitmask) >> (loc % 8);
-
-    #ifndef NDEBUG
-    printf("byte: 0x%x, v: 0x%x\n", bitarray->buf[loc/8] & 0xff, v & 0xff);
-    #endif
     
-    // rloc will point to the location on which we will put the new values
-    // e.g. if we have bit_count 5, and rloc 3: means:
+    // dloc will point to the location on which we will put the new values
+    // e.g. if we have bit_count 5, and dloc 3: means:
     // x x x _ _ 
-    //       ^rloc
-    size_t remaining_writeable = bit_count-rloc;
+    //       ^dloc
+    size_t remaining_writeable = min_size_t(bit_count-(dloc-destination_index), 8-(dloc % 8));
 
     // (-loc % 8 + 8), e.g. if loc = 6. we will get 2. This corresponds to
     // knowing that we only have the last 2 bits of current byte
@@ -207,29 +201,18 @@ void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_in
     //             ^loc
     size_t current_byte_gotten = (8 - (loc % 8));
 
-    #ifndef NDEBUG
-    printf("remaining_writeable %lu, current_byte_gotten %lu\n", remaining_writeable & 0xff, current_byte_gotten & 0xff);
-    #endif
-
     // get min(remaining_writeable, current_byte_gotten)
-    size_t towrite_count = remaining_writeable > current_byte_gotten ? current_byte_gotten : remaining_writeable;
-    size_t toshift_amount = rloc % 8;
+    size_t towrite_count = min_size_t(remaining_writeable, current_byte_gotten);
+    size_t toshift_amount = dloc % 8;
     char new_value = v & bitmask_until(towrite_count);
 
-    #ifndef NDEBUG
-    printf("toshift_amount %lu, new_value 0x%x, prev value 0x%x\n", toshift_amount, new_value & 0xff, destination->buf[rloc/8] & 0xff);
-    #endif
+    // reset the values to be written
+    destination->buf[dloc/8] &= ~(bitmask_until(toshift_amount+towrite_count) ^ bitmask_until(toshift_amount));
 
-    destination->buf[rloc/8] = destination->buf[rloc/8] ^ (new_value << toshift_amount);
-    rloc += towrite_count;
+    destination->buf[dloc/8] ^= (new_value << toshift_amount);
+    dloc += towrite_count;
     loc += towrite_count;
-    if (rloc >= bit_count) {
-      #ifndef NDEBUG
-      printf("exit batched\n");
-      printf("\n===== EXIT ==========\n\n");
-
-      #endif
-
+    if (dloc >= destination_index+bit_count) {
       break;
     }
   }
@@ -272,7 +255,7 @@ void bitarray_rotate(bitarray_t* const bitarray,
 
   // Convert a rotate left or right to a left rotate only, and eliminate
   // multiple full rotations.
-  bitarray_rotate_left_r(bitarray, bit_offset, bit_length,
+  bitarray_rotate_left_cb(bitarray, bit_offset, bit_length,
                        modulo(-bit_right_amount, bit_length));
 }
 
@@ -340,6 +323,23 @@ static void bitarray_rotate_left_r(bitarray_t* const bitarray,
     h++; t--;
   }
 }
+
+// cb for copy batched
+static void bitarray_rotate_left_cb(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount) {
+  assert(bit_left_amount >= 0);
+  assert(bit_length <= bitarray->bit_sz);
+  assert(bit_left_amount <= bit_length);
+
+  bitarray_t* buffer = bitarray_new(bit_left_amount);
+  bitarray_copy_batched(bitarray, bit_offset, bit_left_amount, buffer, 0);
+  bitarray_copy_batched(bitarray, bit_offset+bit_left_amount, bit_length-bit_left_amount, bitarray, bit_offset);
+  bitarray_copy_batched(buffer, 0, bit_left_amount, bitarray, bit_offset+(bit_length - bit_left_amount));
+  bitarray_free(buffer);
+}
+
 
 static void bitarray_rotate_left_one(bitarray_t* const bitarray,
                                      const size_t bit_offset,

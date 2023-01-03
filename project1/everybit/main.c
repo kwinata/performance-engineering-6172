@@ -117,16 +117,6 @@ void test_bitarray_copy_batched() {
   for (size_t i = 0; i < 6; i ++) {
     assert(bitarray_get(copied, i) == ((0b100011 & (1 << i)) > 0));
   }
-
-  #ifndef NDEBUG
-    printf("Input bitarray: ");
-    bitarray_fprint(stdout, b);
-    printf("\n");
-    printf("gotten bitarray: ");
-    bitarray_fprint(stdout, copied);
-    printf("\n");
-  #endif
-  
   bitarray_free(b);
   bitarray_free(copied);
 }
