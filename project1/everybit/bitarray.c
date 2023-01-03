@@ -34,6 +34,10 @@
 
 #include <sys/types.h>
 
+#define BITMASK(bit_index) (1 << (bit_index & 0b111))
+#define BITMASK_UNTIL(count) ((1 << (count)) - 1)
+#define NEGMOD8(v) (8 - (v & 0b111))
+#define MIN(a, b) (a < b ? a : b)
 
 // ********************************* Types **********************************
 
@@ -118,8 +122,8 @@ static size_t modulo(const ssize_t n, const size_t m);
 // however, so as long as you always use bitarray_get and bitarray_set
 // to access bits in your bitarray, this reverse representation should
 // not matter.
-static char bitmask(const size_t bit_index);
-static char bitmask_until(const int count);
+static inline char bitmask(const size_t bit_index);
+static inline char bitmask_until(const int count);
 
 // ******************************* Functions ********************************
 
@@ -170,10 +174,6 @@ bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index) {
          true : false;
 }
 
-static size_t min_size_t(const size_t a, const size_t b) {
-  return a > b ? b : a;
-}
-
 void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_index, const size_t bit_count, const bitarray_t* destination, const size_t destination_index) {
   assert(bit_index + bit_count <= bitarray->bit_sz);
   assert(destination_index + bit_count <= destination->bit_sz );
@@ -183,7 +183,7 @@ void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_in
   while(true) {
 
     // bitmask of (loc % 8 == 6) is -> 1100_0000 (111_1111 ^ 0011_1111)
-    char bitmask = (bitmask_until(8) ^ bitmask_until(loc % 8));
+    char bitmask = (BITMASK_UNTIL(8) ^ BITMASK_UNTIL(loc % 8));
 
     // we will bit shift by (loc % 8) to push the bits infront
     char v = (bitarray->buf[loc/8] & bitmask) >> (loc % 8);
@@ -192,7 +192,7 @@ void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_in
     // e.g. if we have bit_count 5, and dloc 3: means:
     // x x x _ _ 
     //       ^dloc
-    size_t remaining_writeable = min_size_t(bit_count-(dloc-destination_index), 8-(dloc % 8));
+    size_t remaining_writeable = MIN(bit_count-(dloc-destination_index), NEGMOD8(dloc));
 
     // (-loc % 8 + 8), e.g. if loc = 6. we will get 2. This corresponds to
     // knowing that we only have the last 2 bits of current byte
@@ -202,12 +202,12 @@ void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_in
     size_t current_byte_gotten = (8 - (loc % 8));
 
     // get min(remaining_writeable, current_byte_gotten)
-    size_t towrite_count = min_size_t(remaining_writeable, current_byte_gotten);
+    size_t towrite_count = MIN(remaining_writeable, current_byte_gotten);
     size_t toshift_amount = dloc % 8;
-    char new_value = v & bitmask_until(towrite_count);
+    char new_value = v & BITMASK_UNTIL(towrite_count);
 
     // reset the values to be written
-    destination->buf[dloc/8] &= ~(bitmask_until(toshift_amount+towrite_count) ^ bitmask_until(toshift_amount));
+    destination->buf[dloc/8] &= ~(BITMASK_UNTIL(toshift_amount+towrite_count) ^ BITMASK_UNTIL(toshift_amount));
 
     destination->buf[dloc/8] ^= (new_value << toshift_amount);
     dloc += towrite_count;
@@ -362,10 +362,6 @@ static size_t modulo(const ssize_t n, const size_t m) {
   return (size_t)result;
 }
 
-static char bitmask(const size_t bit_index) {
+static inline char bitmask(const size_t bit_index) {
   return 1 << (bit_index % 8);
-}
-
-static char bitmask_until(const int count) {
-  return (1 << (count)) - 1;
 }

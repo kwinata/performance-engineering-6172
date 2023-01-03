@@ -16,8 +16,8 @@ version | l tier | description
 - [x] use copy
 - [x] r(r(a)r(b)) = ba 
 - [x] batched / byte operation
-- [ ] perform cache analysis
-- [ ] profiling?
+- [x] perf (profiling)
+- [x] cache analysis
 
 ## Features
 
@@ -25,23 +25,6 @@ version | l tier | description
 
 In this method we will be modifying `bitarray_rotate_left` to `bitarray_rotate_left_c`.
 
-``` c
-static void bitarray_rotate_left_c(bitarray_t* const bitarray,
-                                 const size_t bit_offset,
-                                 const size_t bit_length,
-                                 const size_t bit_left_amount) {
-  bitarray_t* buffer = bitarray_new(bit_left_amount);
-  for (size_t i = 0; i < bit_left_amount; i++) {
-    bitarray_set(buffer, i, bitarray_get(bitarray, bit_offset+i));
-  }
-  for (size_t i = bit_left_amount; i < bit_length; i++) {
-    bitarray_set(bitarray, bit_offset+i-bit_left_amount, bitarray_get(bitarray, bit_offset+i));
-  }
-  for (size_t i = bit_length - bit_left_amount; i < bit_length; i++) {
-    bitarray_set(bitarray, bit_offset+i, bitarray_get(buffer, i-(bit_length - bit_left_amount)));
-  }
-}
-```
 
 ### Feature 2: use (aRbR)R=ba
 
@@ -54,85 +37,9 @@ We don't have to do this with external memory (just need a constant memory). We 
 1. Reverse each part 100 - 01 => 001 - 10
 2. Reverse everything 00110 => 01100.
 
-With initial implementation, we can get tier 38 performance
-
-``` c
-// r for reversal
-static void bitarray_rotate_left_r(bitarray_t* const bitarray,
-                                 const size_t bit_offset,
-                                 const size_t bit_length,
-                                 const size_t bit_left_amount) {
-  // this is necessary to prevent overflow (-1 -> 18446744073709551615) when
-  //  when calculating lt
-  if (bit_left_amount <= 0) {
-    return; 
-  }
-
-  bool tmp;
-  size_t lh = bit_offset; // left head
-  size_t lt = bit_offset+bit_left_amount-1; // left tail
-  size_t rh = bit_offset+bit_left_amount; // right head
-  size_t rt = bit_offset+bit_length-1; // right tail
-  #ifdef DEBUG
-    printf("DEBUG 0");
-    bitarray_fprint(stdout, bitarray);
-  #endif
-  while (lh < lt) {
-    tmp = bitarray_get(bitarray, lt);
-    bitarray_set(bitarray, lt, bitarray_get(bitarray, lh));
-    bitarray_set(bitarray, lh, tmp);
-    lh++; lt--;
-  }
-  #ifdef DEBUG
-    printf("DEBUG 1");
-    bitarray_fprint(stdout, bitarray);
-  #endif
-  while (rh < rt) {
-    tmp = bitarray_get(bitarray, rt);
-    bitarray_set(bitarray, rt, bitarray_get(bitarray, rh));
-    bitarray_set(bitarray, rh, tmp);
-    rh++; rt--;
-  }
-  size_t h = bit_offset;
-  size_t t = bit_offset+bit_length-1;
-  while (h < t) {
-    tmp = bitarray_get(bitarray, t);
-    bitarray_set(bitarray, t, bitarray_get(bitarray, h));
-    bitarray_set(bitarray, h, tmp);
-    h++; t--;
-  }
-}
-```
+With initial implementation, we can get tier 38 performance.
 
 However we can still improve by avoiding the checks in the while loop by pre-calculating the number of iteration that we need.
-
-``` c
-  bool tmp;
-  size_t lh = bit_offset; // left head
-  size_t lt = bit_offset+bit_left_amount-1; // left tail
-  size_t rh = bit_offset+bit_left_amount; // right head
-  size_t rt = bit_offset+bit_length-1; // right tail
-  for (int i = 0; i < (bit_left_amount >> 1); i ++) {
-    tmp = bitarray_get(bitarray, lt);
-    bitarray_set(bitarray, lt, bitarray_get(bitarray, lh));
-    bitarray_set(bitarray, lh, tmp);
-    lh++; lt--;
-  }
-  for (int i = 0; i < ((bit_length - bit_left_amount) >> 1); i ++) {
-    tmp = bitarray_get(bitarray, rt);
-    bitarray_set(bitarray, rt, bitarray_get(bitarray, rh));
-    bitarray_set(bitarray, rh, tmp);
-    rh++; rt--;
-  }
-  size_t h = bit_offset;
-  size_t t = bit_offset+bit_length-1;
-  for (int i = 0; i < (bit_length >> 1); i ++) {
-    tmp = bitarray_get(bitarray, t);
-    bitarray_set(bitarray, t, bitarray_get(bitarray, h));
-    bitarray_set(bitarray, h, tmp);
-    h++; t--;
-  }
-```
 
 This turns out doens't improve that much. The while loop version on tier 38 runs 0.819516s meanwhile the for loop version runs 0.809408s. Which could be attributed to random variation.
 
@@ -163,3 +70,92 @@ Specifically, we can apply this for the copy strategy.
 
 After implementing. We found out that the improvement that we get is about 2x improvement. Allowing us to increase to tier 40 rather than 38.
 
+## Exploration / tuning
+
+The following exploration will be primarily done on the copy_batched method, unless otherwise stated.
+
+### Exploration 1: `perf`
+
+We will be doing the following:
+
+```
+make clean
+make DEBUG=1
+sudo perf record ./everybit -l
+sudo perf report
+```
+
+Here's the output:
+``` bash
+  50.36%  everybit  everybit           [.] bitarray_copy_batched
+  30.57%  everybit  everybit           [.] bitmask_until
+  12.00%  everybit  everybit           [.] min_size_t
+   4.62%  everybit  libc-2.31.so       [.] __vfscanf_internal
+   1.10%  everybit  everybit           [.] bitarray_randfill
+   0.62%  everybit  [kernel.kallsyms]  [k] clear_page_erms
+   0.11%  everybit  [kernel.kallsyms]  [k] __do_page_fault
+```
+
+As we can see, bitmask_until is taking a lot of performance. Maybe we should inline it.
+
+However, even after inlining, the function is still separate. And this is confirmed when I checked the assembly.
+
+Let's try to convert the functino to be a macro instead. And now it's gone:
+
+``` c
+#define BITMASK(bit_index) (1 << (bit_index & 0b111))
+#define BITMASK_UNTIL(count) ((1 << (count)) - 1)
+#define NEGMOD8(v) (8 - (v & 0b111))
+```
+
+```
+  71.52%  everybit  everybit           [.] bitarray_copy_batched
+  18.37%  everybit  everybit           [.] min_size_t
+   6.28%  everybit  libc-2.31.so       [.] __vfscanf_internal
+```
+
+Although, the performance is not yet improved. Let's try to also make the `min_size_t` to be macro:
+
+```
+  86.12%  everybit  everybit           [.] bitarray_copy_batched
+   9.10%  everybit  libc-2.31.so       [.] __vfscanf_internal
+   2.30%  everybit  everybit           [.] bitarray_randfill
+   1.07%  everybit  [kernel.kallsyms]  [k] clear_page_erms
+  ```
+
+It might have slight improvement on the 40th tier (it was around `0.9s` and now `0.8s`), but it's still not enough to increase a tier.
+
+### Exploration 2: cache analysis
+
+Cachegrind output:
+
+``` 
+==4420== Cachegrind, a cache and branch-prediction profiler
+==4420== Copyright (C) 2002-2017, and GNU GPL'd, by Nicholas Nethercote et al.
+==4420== Using Valgrind-3.15.0 and LibVEX; rerun with -h for copyright info
+==4420== Command: ./everybit -l
+==4420== 
+--4420-- warning: L3 cache found, using its data for the LL simulation.
+--4420-- warning: specified LL cache: line_size 64  assoc 11  total_size 37,486,592
+--4420-- warning: simulated LL cache: line_size 64  assoc 18  total_size 37,748,736
+==4420== 
+==4420== I   refs:      996,241,075
+==4420== I1  misses:          2,328
+==4420== LLi misses:          1,525
+==4420== I1  miss rate:        0.00%
+==4420== LLi miss rate:        0.00%
+==4420== 
+==4420== D   refs:      515,936,743  (383,409,992 rd   + 132,526,751 wr)
+==4420== D1  misses:        226,514  (    131,397 rd   +      95,117 wr)
+==4420== LLd misses:         39,349  (      5,226 rd   +      34,123 wr)
+==4420== D1  miss rate:         0.0% (        0.0%     +         0.1%  )
+==4420== LLd miss rate:         0.0% (        0.0%     +         0.0%  )
+==4420== 
+==4420== LL refs:           228,842  (    133,725 rd   +      95,117 wr)
+==4420== LL misses:          40,874  (      6,751 rd   +      34,123 wr)
+==4420== LL miss rate:          0.0% (        0.0%     +         0.0%  )
+==4420== 
+==4420== Branches:       37,583,503  ( 36,359,606 cond +   1,223,897 ind)
+==4420== Mispredicts:        88,603  (     88,013 cond +         590 ind)
+==4420== Mispred rate:          0.2% (        0.2%     +         0.0%   )
+```
