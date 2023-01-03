@@ -36,12 +36,15 @@
 // ******************************* Prototypes *******************************
 
 void print_usage(const char* const argv_0);
-
+void test_bitarray_copy_batched();
 
 // ******************************* Functions ********************************
 
 int main(int argc, char** argv) {
   int retval = EXIT_SUCCESS;
+
+  // pre-tests
+  test_bitarray_copy_batched();
 
   // Parse options.
   char optchar;
@@ -102,4 +105,18 @@ void print_usage(const char* const argv_0) {
           "\t -t tests/default\tRun alltests in the testfile tests/default\n"
           "\t -n 1 -t tests/default\tRun test 1 in the testfile tests/default\n",
           argv_0);
+}
+
+void test_bitarray_copy_batched() {
+  bitarray_t* b = bitarray_new(10);
+  for (size_t i = 0; i < 10; i ++) {
+    bitarray_set(b, i, (0b1100011100 & (1 << i)) > 0);
+  }
+  bitarray_t* copied = bitarray_new(6);
+  bitarray_copy_batched(b, 3, 6, copied, 0);
+  for (size_t i = 0; i < 6; i ++) {
+    assert(bitarray_get(copied, i) == ((0b100011 & (1 << i)) > 0));
+  }
+  bitarray_free(b);
+  bitarray_free(copied);
 }

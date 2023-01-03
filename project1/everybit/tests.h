@@ -42,5 +42,7 @@ int timed_rotation(const double time_limit_seconds);
 // Runs the testsuite specified in a given file.
 void parse_and_run_tests(const char* filename, int min_test);
 
+void bitarray_fprint(FILE* const stream, const bitarray_t* const bitarray);
+
 #endif  // TESTS_H
 

@@ -34,3 +34,9 @@
 # e 00101101
 
 # Place your 20 test cases below, here.
+
+t 1
+
+n 0010001
+r 2 5 2
+e 0001100

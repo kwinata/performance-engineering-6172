@@ -29,10 +29,15 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <sys/types.h>
 
+#define BITMASK(bit_index) (1 << (bit_index & 0b111))
+#define BITMASK_UNTIL(count) ((1 << (count)) - 1)
+#define NEGMOD8(v) (8 - (v & 0b111))
+#define MIN(a, b) (a < b ? a : b)
 
 // ********************************* Types **********************************
 
@@ -61,6 +66,18 @@ struct bitarray {
 // [bit_offset, bit_offset + bit_length)
 // That is, the start is inclusive, but the end is exclusive.
 static void bitarray_rotate_left(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount);
+static void bitarray_rotate_left_c(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount);
+static void bitarray_rotate_left_r(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount);
+static void bitarray_rotate_left_cb(bitarray_t* const bitarray,
                                  const size_t bit_offset,
                                  const size_t bit_length,
                                  const size_t bit_left_amount);
@@ -105,8 +122,8 @@ static size_t modulo(const ssize_t n, const size_t m);
 // however, so as long as you always use bitarray_get and bitarray_set
 // to access bits in your bitarray, this reverse representation should
 // not matter.
-static char bitmask(const size_t bit_index);
-
+static inline char bitmask(const size_t bit_index);
+static inline char bitmask_until(const int count);
 
 // ******************************* Functions ********************************
 
@@ -157,6 +174,51 @@ bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index) {
          true : false;
 }
 
+void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_index, const size_t bit_count, const bitarray_t* destination, const size_t destination_index) {
+  assert(bit_index + bit_count <= bitarray->bit_sz);
+  assert(destination_index + bit_count <= destination->bit_sz );
+  
+  size_t loc = bit_index;
+  size_t dloc = destination_index;
+  while(true) {
+
+    // bitmask of (loc % 8 == 6) is -> 1100_0000 (111_1111 ^ 0011_1111)
+    char bitmask = (BITMASK_UNTIL(8) ^ BITMASK_UNTIL(loc % 8));
+
+    // we will bit shift by (loc % 8) to push the bits infront
+    char v = (bitarray->buf[loc/8] & bitmask) >> (loc % 8);
+    
+    // dloc will point to the location on which we will put the new values
+    // e.g. if we have bit_count 5, and dloc 3: means:
+    // x x x _ _ 
+    //       ^dloc
+    size_t remaining_writeable = MIN(bit_count-(dloc-destination_index), NEGMOD8(dloc));
+
+    // (-loc % 8 + 8), e.g. if loc = 6. we will get 2. This corresponds to
+    // knowing that we only have the last 2 bits of current byte
+    // _ _ _ _ _ _ x x
+    // 0 1 2 3 4 5 6 7
+    //             ^loc
+    size_t current_byte_gotten = (8 - (loc % 8));
+
+    // get min(remaining_writeable, current_byte_gotten)
+    size_t towrite_count = MIN(remaining_writeable, current_byte_gotten);
+    size_t toshift_amount = dloc % 8;
+    char new_value = v & BITMASK_UNTIL(towrite_count);
+
+    // reset the values to be written
+    destination->buf[dloc/8] &= ~(BITMASK_UNTIL(toshift_amount+towrite_count) ^ BITMASK_UNTIL(toshift_amount));
+
+    destination->buf[dloc/8] ^= (new_value << toshift_amount);
+    dloc += towrite_count;
+    loc += towrite_count;
+    if (dloc >= destination_index+bit_count) {
+      break;
+    }
+  }
+  return;
+}
+
 void bitarray_set(bitarray_t* const bitarray,
                   const size_t bit_index,
                   const bool value) {
@@ -193,10 +255,11 @@ void bitarray_rotate(bitarray_t* const bitarray,
 
   // Convert a rotate left or right to a left rotate only, and eliminate
   // multiple full rotations.
-  bitarray_rotate_left(bitarray, bit_offset, bit_length,
+  bitarray_rotate_left_cb(bitarray, bit_offset, bit_length,
                        modulo(-bit_right_amount, bit_length));
 }
 
+// original implementation
 static void bitarray_rotate_left(bitarray_t* const bitarray,
                                  const size_t bit_offset,
                                  const size_t bit_length,
@@ -205,6 +268,78 @@ static void bitarray_rotate_left(bitarray_t* const bitarray,
     bitarray_rotate_left_one(bitarray, bit_offset, bit_length);
   }
 }
+
+// c for copy
+static void bitarray_rotate_left_c(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount) {
+  bitarray_t* buffer = bitarray_new(bit_left_amount);
+  for (size_t i = 0; i < bit_left_amount; i++) {
+    bitarray_set(buffer, i, bitarray_get(bitarray, bit_offset+i));
+  }
+  for (size_t i = bit_left_amount; i < bit_length; i++) {
+    bitarray_set(bitarray, bit_offset+i-bit_left_amount, bitarray_get(bitarray, bit_offset+i));
+  }
+  for (size_t i = bit_length - bit_left_amount; i < bit_length; i++) {
+    bitarray_set(bitarray, bit_offset+i, bitarray_get(buffer, i-(bit_length - bit_left_amount)));
+  }
+}
+
+// r for reversal
+static void bitarray_rotate_left_r(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount) {
+  // this is necessary to prevent overflow (-1 -> 18446744073709551615) when
+  //  when calculating lt
+  if (bit_left_amount <= 0) {
+    return; 
+  }
+
+  bool tmp;
+  size_t lh = bit_offset; // left head
+  size_t lt = bit_offset+bit_left_amount-1; // left tail
+  size_t rh = bit_offset+bit_left_amount; // right head
+  size_t rt = bit_offset+bit_length-1; // right tail
+  for (int i = 0; i < (bit_left_amount >> 1); i ++) {
+    tmp = bitarray_get(bitarray, lt);
+    bitarray_set(bitarray, lt, bitarray_get(bitarray, lh));
+    bitarray_set(bitarray, lh, tmp);
+    lh++; lt--;
+  }
+  for (int i = 0; i < ((bit_length - bit_left_amount) >> 1); i ++) {
+    tmp = bitarray_get(bitarray, rt);
+    bitarray_set(bitarray, rt, bitarray_get(bitarray, rh));
+    bitarray_set(bitarray, rh, tmp);
+    rh++; rt--;
+  }
+  size_t h = bit_offset;
+  size_t t = bit_offset+bit_length-1;
+  for (int i = 0; i < (bit_length >> 1); i ++) {
+    tmp = bitarray_get(bitarray, t);
+    bitarray_set(bitarray, t, bitarray_get(bitarray, h));
+    bitarray_set(bitarray, h, tmp);
+    h++; t--;
+  }
+}
+
+// cb for copy batched
+static void bitarray_rotate_left_cb(bitarray_t* const bitarray,
+                                 const size_t bit_offset,
+                                 const size_t bit_length,
+                                 const size_t bit_left_amount) {
+  assert(bit_left_amount >= 0);
+  assert(bit_length <= bitarray->bit_sz);
+  assert(bit_left_amount <= bit_length);
+
+  bitarray_t* buffer = bitarray_new(bit_left_amount);
+  bitarray_copy_batched(bitarray, bit_offset, bit_left_amount, buffer, 0);
+  bitarray_copy_batched(bitarray, bit_offset+bit_left_amount, bit_length-bit_left_amount, bitarray, bit_offset);
+  bitarray_copy_batched(buffer, 0, bit_left_amount, bitarray, bit_offset+(bit_length - bit_left_amount));
+  bitarray_free(buffer);
+}
+
 
 static void bitarray_rotate_left_one(bitarray_t* const bitarray,
                                      const size_t bit_offset,
@@ -227,7 +362,6 @@ static size_t modulo(const ssize_t n, const size_t m) {
   return (size_t)result;
 }
 
-static char bitmask(const size_t bit_index) {
+static inline char bitmask(const size_t bit_index) {
   return 1 << (bit_index % 8);
 }
-

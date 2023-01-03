@@ -40,6 +40,11 @@ n 10010110
 r 2 5 2
 e 10110100
 
+# this will rotate 01011
+# rotate right by 2
+# 11010
+# put back in the string 10-11010-00
+
 
 # 2: 8bit
 t 2

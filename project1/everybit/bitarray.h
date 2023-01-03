@@ -51,6 +51,9 @@ void bitarray_randfill(bitarray_t* const bitarray);
 // index.
 bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index);
 
+// custom implementation that copy in bytes
+void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_index, const size_t bit_count, const bitarray_t* destination, const size_t destination_index);
+
 // Indexes into a bit array, setting the bit at the specified zero-based index.
 void bitarray_set(bitarray_t* const bitarray,
                   const size_t bit_index,
