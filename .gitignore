@@ -1,3 +1,4 @@
 perf.*
 cachegrind.*
 .vscode
+clint.py

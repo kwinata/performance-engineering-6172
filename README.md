@@ -38,3 +38,4 @@ Week 6 (4th week of Jan)
 ## Useful links
 
 - [Google Cpp Style Guide](https://google.github.io/styleguide/cppguide.html)
+- [clint.py](https://github.com/sillycross/Leiserchess---MIT-6.172-Fall16-Final-Project/blob/master/clint.py)
