@@ -159,3 +159,46 @@ Cachegrind output:
 ==4420== Mispredicts:        88,603  (     88,013 cond +         590 ind)
 ==4420== Mispred rate:          0.2% (        0.2%     +         0.0%   )
 ```
+
+## Implement a i64 version
+
+So we need to modify the exported functions:
+
+``` c
+typedef struct bitarray bitarray_t;
+bitarray_t* bitarray_new(const size_t bit_sz);
+void bitarray_free(bitarray_t* const bitarray);
+size_t bitarray_get_bit_sz(const bitarray_t* const bitarray);
+void bitarray_randfill(bitarray_t* const bitarray);
+bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index);
+void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_index, const size_t bit_count, const bitarray_t* destination, const size_t destination_index);
+void bitarray_set(bitarray_t* const bitarray,
+                  const size_t bit_index,
+                  const bool value);
+void bitarray_rotate(bitarray_t* const bitarray,
+                     const size_t bit_offset,
+                     const size_t bit_length,
+                     const ssize_t bit_right_amount);
+```
+
+First we will refactor to be able to change the type easily (instead of fixed to char):
+
+``` c
+
+#define BUF_SZ 8
+#define BUF_SZ_POW 3
+typedef u_int8_t buf_t;
+
+// Concrete data type representing an array of bits.
+struct bitarray {
+  // The number of bits represented by this bit array.
+  // Need not be divisible by BUF_SZ.
+  size_t bit_sz;
+
+  // The underlying memory buffer that stores the bits in
+  // packed form (BUF_SZ per byte).
+  buf_t* buf;
+};
+```
+
+After refactoring we can verify that the performance still runs at tier 40.

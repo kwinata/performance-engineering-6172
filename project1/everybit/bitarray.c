@@ -21,7 +21,7 @@
  **/
 
 // Implements the ADT specified in bitarray.h as a packed array of bits; a bit
-// array containing bit_sz bits will consume roughly bit_sz/8 bytes of
+// array containing bit_sz bits will consume roughly bit_sz/BUF_SZ bytes of
 // memory.
 
 
@@ -34,9 +34,18 @@
 
 #include <sys/types.h>
 
-#define BITMASK(bit_index) (1 << (bit_index & 0b111))
+
+#define BUF_SZ 8
+#define BUF_SZ_POW 3
+typedef u_int8_t buf_t;
+
+const buf_t ONE_V = 1;
+const buf_t ALL_ONE = (ONE_V << (BUF_SZ-1)) | ((ONE_V << (BUF_SZ-1)) - 1);
+const buf_t MOD_BUF_SZ = BUF_SZ-1;
+
+#define BITMASK(bit_index) (1 << (bit_index & MOD_BUF_SZ))
 #define BITMASK_UNTIL(count) ((1 << (count)) - 1)
-#define NEGMOD8(v) (8 - (v & 0b111))
+#define NEGMOD(v) (BUF_SZ - (v & MOD_BUF_SZ))
 #define MIN(a, b) (a < b ? a : b)
 
 // ********************************* Types **********************************
@@ -44,14 +53,13 @@
 // Concrete data type representing an array of bits.
 struct bitarray {
   // The number of bits represented by this bit array.
-  // Need not be divisible by 8.
+  // Need not be divisible by BUF_SZ.
   size_t bit_sz;
 
   // The underlying memory buffer that stores the bits in
-  // packed form (8 per byte).
-  char* buf;
+  // packed form (BUF_SZ per byte).
+  buf_t* buf;
 };
-
 
 // ******************** Prototypes for static functions *********************
 
@@ -114,7 +122,7 @@ static size_t modulo(const ssize_t n, const size_t m);
 // Produces a mask which, when ANDed with a byte, retains only the
 // bit_index th byte.
 //
-// Example: bitmask(5) produces the byte 0b00100000.
+// Example: bitmask(5) produces the byte 0b0010000.
 //
 // (Note that here the index is counted from right
 // to left, which is different from how we represent bitarrays in the
@@ -122,14 +130,19 @@ static size_t modulo(const ssize_t n, const size_t m);
 // however, so as long as you always use bitarray_get and bitarray_set
 // to access bits in your bitarray, this reverse representation should
 // not matter.
-static inline char bitmask(const size_t bit_index);
-static inline char bitmask_until(const int count);
+static inline buf_t bitmask(const size_t bit_index);
+static inline buf_t bitmask_until(const int count);
+
+// Prints a string representation of a bit array.
+void bitarray_fprint(FILE* const stream,
+                            const bitarray_t* const bitarray);
+
 
 // ******************************* Functions ********************************
 
 bitarray_t* bitarray_new(const size_t bit_sz) {
-  // Allocate an underlying buffer of ceil(bit_sz/8) bytes.
-  char* const buf = calloc(1, (bit_sz+7) / 8);
+  // Allocate an underlying buffer of ceil(bit_sz/BUF_SZ) bytes.
+  buf_t* const buf = calloc(1, (bit_sz+BUF_SZ-1) / BUF_SZ);
   if (buf == NULL) {
     return NULL;
   }
@@ -162,15 +175,15 @@ size_t bitarray_get_bit_sz(const bitarray_t* const bitarray) {
 bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index) {
   assert(bit_index < bitarray->bit_sz);
 
-  // We're storing bits in packed form, 8 per byte.  So to get the nth
-  // bit, we want to look at the (n mod 8)th bit of the (floor(n/8)th)
+  // We're storing bits in packed form, BUF_SZ per byte.  So to get the nth
+  // bit, we want to look at the (n mod BUF_SZ)th bit of the (floor(n/BUF_SZ)th)
   // byte.
   //
   // In C, integer division is floored explicitly, so we can just do it to
   // get the byte; we then bitwise-and the byte with an appropriate mask
   // to produce either a zero byte (if the bit was 0) or a nonzero byte
   // (if it wasn't).  Finally, we convert that to a boolean.
-  return (bitarray->buf[bit_index / 8] & bitmask(bit_index)) ?
+  return (bitarray->buf[bit_index / BUF_SZ] & bitmask(bit_index)) ?
          true : false;
 }
 
@@ -181,35 +194,35 @@ void bitarray_copy_batched(const bitarray_t* const bitarray, const size_t bit_in
   size_t loc = bit_index;
   size_t dloc = destination_index;
   while(true) {
+    
+    // bitmask of (loc % BUF_SZ == 6) is -> 1100_0000 (1111_1111 ^ 0011_1111)
+    buf_t bitmask = (ALL_ONE ^ BITMASK_UNTIL(loc & MOD_BUF_SZ));
 
-    // bitmask of (loc % 8 == 6) is -> 1100_0000 (111_1111 ^ 0011_1111)
-    char bitmask = (BITMASK_UNTIL(8) ^ BITMASK_UNTIL(loc % 8));
-
-    // we will bit shift by (loc % 8) to push the bits infront
-    char v = (bitarray->buf[loc/8] & bitmask) >> (loc % 8);
+    // we will bit shift by (loc % BUF_SZ) to push the bits infront
+    buf_t v = (bitarray->buf[loc >> BUF_SZ_POW] & bitmask) >> (loc & MOD_BUF_SZ);
     
     // dloc will point to the location on which we will put the new values
     // e.g. if we have bit_count 5, and dloc 3: means:
     // x x x _ _ 
     //       ^dloc
-    size_t remaining_writeable = MIN(bit_count-(dloc-destination_index), NEGMOD8(dloc));
+    size_t remaining_writeable = MIN(bit_count-(dloc-destination_index), NEGMOD(dloc));
 
-    // (-loc % 8 + 8), e.g. if loc = 6. we will get 2. This corresponds to
+    // (-loc % BUF_SZ + BUF_SZ), e.g. if loc = 6. we will get 2. This corresponds to
     // knowing that we only have the last 2 bits of current byte
     // _ _ _ _ _ _ x x
     // 0 1 2 3 4 5 6 7
     //             ^loc
-    size_t current_byte_gotten = (8 - (loc % 8));
+    size_t current_byte_gotten = (BUF_SZ - (loc & MOD_BUF_SZ));
 
     // get min(remaining_writeable, current_byte_gotten)
     size_t towrite_count = MIN(remaining_writeable, current_byte_gotten);
-    size_t toshift_amount = dloc % 8;
-    char new_value = v & BITMASK_UNTIL(towrite_count);
+    size_t toshift_amount = dloc & MOD_BUF_SZ;
+    buf_t new_value = v & BITMASK_UNTIL(towrite_count);
 
     // reset the values to be written
-    destination->buf[dloc/8] &= ~(BITMASK_UNTIL(toshift_amount+towrite_count) ^ BITMASK_UNTIL(toshift_amount));
+    destination->buf[dloc >> BUF_SZ_POW] &= ~(BITMASK_UNTIL(toshift_amount+towrite_count) ^ BITMASK_UNTIL(toshift_amount));
 
-    destination->buf[dloc/8] ^= (new_value << toshift_amount);
+    destination->buf[dloc >> BUF_SZ_POW] ^= (new_value << toshift_amount);
     dloc += towrite_count;
     loc += towrite_count;
     if (dloc >= destination_index+bit_count) {
@@ -224,15 +237,15 @@ void bitarray_set(bitarray_t* const bitarray,
                   const bool value) {
   assert(bit_index < bitarray->bit_sz);
 
-  // We're storing bits in packed form, 8 per byte.  So to set the nth
-  // bit, we want to set the (n mod 8)th bit of the (floor(n/8)th) byte.
+  // We're storing bits in packed form, BUF_SZ per byte.  So to set the nth
+  // bit, we want to set the (n mod BUF_SZ)th bit of the (floor(n/BUF_SZ)th) byte.
   //
   // In C, integer division is floored explicitly, so we can just do it to
   // get the byte; we then bitwise-and the byte with an appropriate mask
   // to clear out the bit we're about to set.  We bitwise-or the result
   // with a byte that has either a 1 or a 0 in the correct place.
-  bitarray->buf[bit_index / 8] =
-    (bitarray->buf[bit_index / 8] & ~bitmask(bit_index)) |
+  bitarray->buf[bit_index / BUF_SZ] =
+    (bitarray->buf[bit_index / BUF_SZ] & ~bitmask(bit_index)) |
     (value ? bitmask(bit_index) : 0);
 }
 
@@ -362,6 +375,14 @@ static size_t modulo(const ssize_t n, const size_t m) {
   return (size_t)result;
 }
 
-static inline char bitmask(const size_t bit_index) {
-  return 1 << (bit_index % 8);
+static inline buf_t bitmask(const size_t bit_index) {
+  return 1 << (bit_index & MOD_BUF_SZ);
+}
+
+
+void bitarray_fprint(FILE* const stream,
+                            const bitarray_t* const bitarray) {
+  for (size_t i = 0; i < bitarray_get_bit_sz(bitarray); i++) {
+    fprintf(stream, "%d", bitarray_get(bitarray, i) ? 1 : 0);
+  }
 }

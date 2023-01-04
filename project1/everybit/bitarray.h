@@ -25,6 +25,7 @@
 
 #include <sys/types.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 // ********************************* Types **********************************
 
@@ -87,5 +88,9 @@ void bitarray_rotate(bitarray_t* const bitarray,
                      const size_t bit_offset,
                      const size_t bit_length,
                      const ssize_t bit_right_amount);
+
+// Prints a string representation of a bit array.
+void bitarray_fprint(FILE* const stream,
+                            const bitarray_t* const bitarray);
 
 #endif  // BITARRAY_H

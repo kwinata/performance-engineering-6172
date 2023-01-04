@@ -110,13 +110,20 @@ void print_usage(const char* const argv_0) {
 void test_bitarray_copy_batched() {
   bitarray_t* b = bitarray_new(10);
   for (size_t i = 0; i < 10; i ++) {
+    // 0x1c - 0x03
     bitarray_set(b, i, (0b1100011100 & (1 << i)) > 0);
   }
   bitarray_t* copied = bitarray_new(6);
   bitarray_copy_batched(b, 3, 6, copied, 0);
   for (size_t i = 0; i < 6; i ++) {
-    assert(bitarray_get(copied, i) == ((0b100011 & (1 << i)) > 0));
+    if(bitarray_get(copied, i) == ((0b100011 & (1 << i)) > 0)) {
+      continue;
+    } else {
+      printf("Not same %lu\n", i);
+      exit(1);
+    }
   }
+  printf("copied result:"); bitarray_fprint(stdout, copied); printf("\n");
   bitarray_free(b);
   bitarray_free(copied);
 }
