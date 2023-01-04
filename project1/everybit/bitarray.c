@@ -35,9 +35,10 @@
 #include <sys/types.h>
 
 
-#define BUF_SZ 8
-#define BUF_SZ_POW 3
-typedef u_int8_t buf_t;
+#define BUF_SZ 64
+#define BUF_SZ_POW 6
+#define BYTE_COUNT 8
+typedef u_int64_t buf_t;
 
 const buf_t ONE_V = 1;
 const buf_t ALL_ONE = (ONE_V << (BUF_SZ-1)) | ((ONE_V << (BUF_SZ-1)) - 1);
@@ -142,7 +143,7 @@ void bitarray_fprint(FILE* const stream,
 
 bitarray_t* bitarray_new(const size_t bit_sz) {
   // Allocate an underlying buffer of ceil(bit_sz/BUF_SZ) bytes.
-  buf_t* const buf = calloc(1, (bit_sz+BUF_SZ-1) / BUF_SZ);
+  buf_t* const buf = calloc(BYTE_COUNT, (bit_sz+BUF_SZ-1) / BUF_SZ);
   if (buf == NULL) {
     return NULL;
   }

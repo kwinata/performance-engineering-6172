@@ -202,3 +202,12 @@ struct bitarray {
 ```
 
 After refactoring we can verify that the performance still runs at tier 40.
+
+
+type | tier | time at tier 40 | time at best tier
+---- | ---- | --------------- | -----------------
+ui8  | 40   | 0.9s            | 0.9s
+ui16 | 40   | 0.5s            | 0.5s
+ui32 | 42   | 0.3s            | 0.7s
+ui64 | 44   | 0.1s            | 0.9s
+i128 | 44   | 0.1s            | 0.9s
