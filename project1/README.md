@@ -9,6 +9,7 @@ version | l tier | description
 2.0     | 38     | use swap + reversal (use while loop)
 2.1     | 38     | use swap + reversal (use for loop)
 3       | 40     | use batched copy
+4       | 44     | change underlying buffer type
 
 
 ## Todolist
@@ -160,7 +161,7 @@ Cachegrind output:
 ==4420== Mispred rate:          0.2% (        0.2%     +         0.0%   )
 ```
 
-## Implement a i64 version
+## (Feature 4) Implement a i64 version
 
 So we need to modify the exported functions:
 
