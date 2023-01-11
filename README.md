@@ -16,7 +16,7 @@ https://ocw.mit.edu/courses/6-172-performance-engineering-of-software-systems-fa
 Week 3 (1st week of Jan)
 - [x] Project 1 
 - [x] Week 3 Lecture 4
-- [ ] Week 3 Lecture 5
+- [x] Week 3 Lecture 5
 - [ ] HW3 Vectorization
 
 Week 4 (2nd week of Jan)

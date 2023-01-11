@@ -2,3 +2,4 @@ perf.*
 cachegrind.*
 .vscode
 clint.py
+**/.DS_Store
